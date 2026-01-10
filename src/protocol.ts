@@ -101,6 +101,33 @@ const closeSchema = baseCommandSchema.extend({
   action: z.literal('close'),
 });
 
+// Tab/Window schemas
+const tabNewSchema = baseCommandSchema.extend({
+  action: z.literal('tab_new'),
+});
+
+const tabListSchema = baseCommandSchema.extend({
+  action: z.literal('tab_list'),
+});
+
+const tabSwitchSchema = baseCommandSchema.extend({
+  action: z.literal('tab_switch'),
+  index: z.number().nonnegative(),
+});
+
+const tabCloseSchema = baseCommandSchema.extend({
+  action: z.literal('tab_close'),
+  index: z.number().nonnegative().optional(),
+});
+
+const windowNewSchema = baseCommandSchema.extend({
+  action: z.literal('window_new'),
+  viewport: z.object({
+    width: z.number().positive(),
+    height: z.number().positive(),
+  }).optional(),
+});
+
 // Union schema for all commands
 const commandSchema = z.discriminatedUnion('action', [
   launchSchema,
@@ -117,6 +144,11 @@ const commandSchema = z.discriminatedUnion('action', [
   hoverSchema,
   contentSchema,
   closeSchema,
+  tabNewSchema,
+  tabListSchema,
+  tabSwitchSchema,
+  tabCloseSchema,
+  windowNewSchema,
 ]);
 
 // Parse result type

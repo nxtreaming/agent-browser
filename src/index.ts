@@ -1,6 +1,39 @@
 #!/usr/bin/env node
-import { send, setDebug } from './client.js';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { send, setDebug, setSession, getSession } from './client.js';
 import type { Response } from './types.js';
+
+/**
+ * List all active veb sessions
+ */
+function listSessions(): string[] {
+  const tmpDir = os.tmpdir();
+  try {
+    const files = fs.readdirSync(tmpDir);
+    const sessions: string[] = [];
+    
+    for (const file of files) {
+      const match = file.match(/^veb-(.+)\.pid$/);
+      if (match) {
+        const pidFile = path.join(tmpDir, file);
+        try {
+          const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+          // Check if process is still running
+          process.kill(pid, 0);
+          sessions.push(match[1]);
+        } catch {
+          // Process not running, ignore
+        }
+      }
+    }
+    
+    return sessions;
+  } catch {
+    return [];
+  }
+}
 
 // ANSI colors
 const colors = {
@@ -39,7 +72,19 @@ ${c('yellow', 'Commands:')}
   ${c('cyan', 'select')} <selector> <value>     Select dropdown option
   ${c('cyan', 'close')}                         Close browser and stop daemon
 
+${c('yellow', 'Tab/Window Commands:')}
+  ${c('cyan', 'tab new')}                       Open a new tab
+  ${c('cyan', 'tab list')}                      List all open tabs
+  ${c('cyan', 'tab')} <index>                   Switch to tab by index
+  ${c('cyan', 'tab close')} [index]             Close tab (current if no index)
+  ${c('cyan', 'window new')}                    Open a new window
+
+${c('yellow', 'Session Commands:')}
+  ${c('cyan', 'session')}                       Show current session name
+  ${c('cyan', 'session list')}                  List all active sessions
+
 ${c('yellow', 'Options:')}
+  --session <name>              Use isolated browser session (or VEB_SESSION env)
   --json                        Output raw JSON (for agents)
   --selector, -s <sel>          Target specific element
   --text, -t                    Wait for text instead of selector
@@ -57,6 +102,9 @@ ${c('yellow', 'Examples:')}
   veb extract "table" --json
   veb eval "document.title"
   veb scroll down 500
+  veb tab new
+  veb tab list
+  veb tab 0
 `);
 }
 
@@ -101,8 +149,24 @@ function printResponse(response: Response, jsonMode: boolean): void {
     console.log(c('green', '✓'), 'Done');
   } else if (data.launched) {
     console.log(c('green', '✓'), 'Browser launched');
-  } else if (data.closed) {
+  } else if (data.closed === true) {
     console.log(c('green', '✓'), 'Browser closed');
+  } else if (data.tabs) {
+    // Tab list
+    const tabs = data.tabs as Array<{ index: number; url: string; title: string; active: boolean }>;
+    tabs.forEach(tab => {
+      const marker = tab.active ? c('green', '→') : ' ';
+      const idx = c('cyan', `[${tab.index}]`);
+      const title = tab.title || c('dim', '(untitled)');
+      console.log(`${marker} ${idx} ${title}`);
+      if (tab.url) console.log(c('dim', `     ${tab.url}`));
+    });
+  } else if (data.index !== undefined && data.total !== undefined) {
+    // Tab new / window new
+    console.log(c('green', '✓'), `Tab ${data.index} created (${data.total} total)`);
+  } else if (data.remaining !== undefined) {
+    // Tab close
+    console.log(c('green', '✓'), `Tab closed (${data.remaining} remaining)`);
   } else {
     console.log(c('green', '✓'), JSON.stringify(data));
   }
@@ -116,6 +180,13 @@ async function main(): Promise<void> {
   if (debugMode) {
     setDebug(true);
   }
+  
+  // Handle session - check --session flag first, then env var
+  const sessionIdx = args.findIndex(a => a === '--session');
+  if (sessionIdx !== -1 && args[sessionIdx + 1]) {
+    setSession(args[sessionIdx + 1]);
+  }
+  // VEB_SESSION env var is already handled by daemon.ts default
   
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
     printHelp();
@@ -132,6 +203,7 @@ async function main(): Promise<void> {
     // Check if previous arg was a flag that takes a value
     const prev = args[i - 1];
     if (prev === '--selector' || prev === '-s') return false;
+    if (prev === '--session') return false;
     return true;
   });
   const command = cleanArgs[0];
@@ -290,6 +362,66 @@ async function main(): Promise<void> {
     case 'exit': {
       cmd = { id, action: 'close' };
       break;
+    }
+    
+    case 'tab': {
+      const subCmd = cleanArgs[1];
+      
+      if (subCmd === 'new') {
+        cmd = { id, action: 'tab_new' };
+      } else if (subCmd === 'list' || subCmd === 'ls') {
+        cmd = { id, action: 'tab_list' };
+      } else if (subCmd === 'close') {
+        const tabIndex = cleanArgs[2] !== undefined ? parseInt(cleanArgs[2], 10) : undefined;
+        cmd = { id, action: 'tab_close', index: tabIndex };
+      } else if (subCmd !== undefined) {
+        // Assume it's a tab index to switch to
+        const tabIndex = parseInt(subCmd, 10);
+        if (isNaN(tabIndex)) {
+          console.error(c('red', 'Error:'), `Invalid tab command or index: ${subCmd}`);
+          process.exit(1);
+        }
+        cmd = { id, action: 'tab_switch', index: tabIndex };
+      } else {
+        // No subcommand - list tabs
+        cmd = { id, action: 'tab_list' };
+      }
+      break;
+    }
+    
+    case 'window': {
+      const subCmd = cleanArgs[1];
+      
+      if (subCmd === 'new') {
+        cmd = { id, action: 'window_new' };
+      } else {
+        console.error(c('red', 'Error:'), 'Usage: veb window new');
+        process.exit(1);
+      }
+      break;
+    }
+    
+    case 'session': {
+      const subCmd = cleanArgs[1];
+      
+      if (subCmd === 'list' || subCmd === 'ls') {
+        const sessions = listSessions();
+        const currentSession = getSession();
+        
+        if (sessions.length === 0) {
+          console.log(c('dim', 'No active sessions'));
+        } else {
+          sessions.forEach(sess => {
+            const marker = sess === currentSession ? c('green', '→') : ' ';
+            console.log(`${marker} ${c('cyan', sess)}`);
+          });
+        }
+        process.exit(0);
+      } else {
+        // Show current session
+        console.log(c('cyan', getSession()));
+        process.exit(0);
+      }
     }
     
     default:

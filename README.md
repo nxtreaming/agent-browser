@@ -60,6 +60,22 @@ veb select "#country" "US"
 # Hover over elements
 veb hover "#menu"
 
+# Tab management
+veb tab new                    # Open new tab
+veb tab list                   # List all tabs
+veb tab 0                      # Switch to tab 0
+veb tab close                  # Close current tab
+veb tab close 1                # Close tab 1
+
+# Window management
+veb window new                 # Open new window
+
+# Session management (isolate multiple agents)
+veb --session agent1 open example.com
+veb --session agent2 open google.com
+veb session list               # List active sessions
+VEB_SESSION=agent1 veb eval "document.title"
+
 # Close browser (stops daemon)
 veb close
 ```
@@ -96,12 +112,43 @@ veb runs a background daemon that keeps the browser open between commands. The f
 | `scroll <dir> [amount]` | Scroll page |
 | `hover <selector>` | Hover over element |
 | `select <selector> <val>` | Select dropdown option |
+| `tab new` | Open new tab |
+| `tab list` | List all tabs |
+| `tab <index>` | Switch to tab |
+| `tab close [index]` | Close tab |
+| `window new` | Open new window |
+| `session` | Show current session |
+| `session list` | List active sessions |
 | `close` | Close browser |
+
+## Sessions
+
+Sessions allow multiple agents to use veb simultaneously without interfering with each other. Each session runs its own isolated browser instance.
+
+```bash
+# Using --session flag
+veb --session agent1 open https://site-a.com
+veb --session agent2 open https://site-b.com
+
+# Using environment variable
+export VEB_SESSION=agent1
+veb open https://example.com
+veb click "#button"
+
+# List all running sessions
+veb session list
+
+# Close a specific session
+veb --session agent1 close
+```
+
+Sessions are identified by name. If no session is specified, the "default" session is used.
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
+| `--session <name>` | Use isolated browser session |
 | `--json` | Output raw JSON |
 | `--full, -f` | Full page screenshot |
 | `--text, -t` | Wait for text |

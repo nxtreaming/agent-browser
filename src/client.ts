@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
-import { getSocketPath, isDaemonRunning } from './daemon.js';
+import { getSocketPath, isDaemonRunning, setSession, getSession } from './daemon.js';
 import type { Response } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -13,6 +13,8 @@ let DEBUG = false;
 export function setDebug(enabled: boolean): void {
   DEBUG = enabled;
 }
+
+export { setSession, getSession };
 
 function debug(...args: unknown[]): void {
   if (DEBUG) {
@@ -41,7 +43,8 @@ async function waitForSocket(maxAttempts = 30): Promise<boolean> {
  * Ensure daemon is running, start if not
  */
 export async function ensureDaemon(): Promise<void> {
-  debug('Checking if daemon is running...');
+  const session = getSession();
+  debug(`Checking if daemon is running for session "${session}"...`);
   if (isDaemonRunning()) {
     debug('Daemon already running');
     return;
@@ -52,7 +55,7 @@ export async function ensureDaemon(): Promise<void> {
   const child = spawn(process.execPath, [daemonPath], {
     detached: true,
     stdio: 'ignore',
-    env: { ...process.env, VEB_DAEMON: '1' },
+    env: { ...process.env, VEB_DAEMON: '1', VEB_SESSION: session },
   });
   child.unref();
   
@@ -62,7 +65,7 @@ export async function ensureDaemon(): Promise<void> {
     throw new Error('Failed to start daemon');
   }
   
-  debug('Daemon started');
+  debug(`Daemon started for session "${session}"`);
 }
 
 /**

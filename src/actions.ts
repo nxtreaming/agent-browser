@@ -14,10 +14,17 @@ import type {
   SelectCommand,
   HoverCommand,
   ContentCommand,
+  TabSwitchCommand,
+  TabCloseCommand,
+  WindowNewCommand,
   NavigateData,
   ScreenshotData,
   EvaluateData,
   ContentData,
+  TabListData,
+  TabNewData,
+  TabSwitchData,
+  TabCloseData,
 } from './types.js';
 import { successResponse, errorResponse } from './protocol.js';
 
@@ -63,6 +70,16 @@ export async function executeCommand(
         return await handleContent(command, browser);
       case 'close':
         return await handleClose(command, browser);
+      case 'tab_new':
+        return await handleTabNew(command, browser);
+      case 'tab_list':
+        return await handleTabList(command, browser);
+      case 'tab_switch':
+        return await handleTabSwitch(command, browser);
+      case 'tab_close':
+        return await handleTabClose(command, browser);
+      case 'window_new':
+        return await handleWindowNew(command, browser);
       default: {
         // TypeScript narrows to never here, but we handle it for safety
         const unknownCommand = command as { id: string; action: string };
@@ -307,4 +324,51 @@ async function handleClose(
 ): Promise<Response> {
   await browser.close();
   return successResponse(command.id, { closed: true });
+}
+
+async function handleTabNew(
+  command: Command & { action: 'tab_new' },
+  browser: BrowserManager
+): Promise<Response<TabNewData>> {
+  const result = await browser.newTab();
+  return successResponse(command.id, result);
+}
+
+async function handleTabList(
+  command: Command & { action: 'tab_list' },
+  browser: BrowserManager
+): Promise<Response<TabListData>> {
+  const tabs = await browser.listTabs();
+  return successResponse(command.id, {
+    tabs,
+    active: browser.getActiveIndex(),
+  });
+}
+
+async function handleTabSwitch(
+  command: TabSwitchCommand,
+  browser: BrowserManager
+): Promise<Response<TabSwitchData>> {
+  const result = browser.switchTo(command.index);
+  const page = browser.getPage();
+  return successResponse(command.id, {
+    ...result,
+    title: await page.title(),
+  });
+}
+
+async function handleTabClose(
+  command: TabCloseCommand,
+  browser: BrowserManager
+): Promise<Response<TabCloseData>> {
+  const result = await browser.closeTab(command.index);
+  return successResponse(command.id, result);
+}
+
+async function handleWindowNew(
+  command: WindowNewCommand,
+  browser: BrowserManager
+): Promise<Response<TabNewData>> {
+  const result = await browser.newWindow(command.viewport);
+  return successResponse(command.id, result);
 }

@@ -97,6 +97,30 @@ export interface CloseCommand extends BaseCommand {
   action: 'close';
 }
 
+// Tab/Window commands
+export interface TabNewCommand extends BaseCommand {
+  action: 'tab_new';
+}
+
+export interface TabListCommand extends BaseCommand {
+  action: 'tab_list';
+}
+
+export interface TabSwitchCommand extends BaseCommand {
+  action: 'tab_switch';
+  index: number;
+}
+
+export interface TabCloseCommand extends BaseCommand {
+  action: 'tab_close';
+  index?: number;
+}
+
+export interface WindowNewCommand extends BaseCommand {
+  action: 'window_new';
+  viewport?: { width: number; height: number };
+}
+
 // Union of all command types
 export type Command =
   | LaunchCommand
@@ -112,7 +136,12 @@ export type Command =
   | SelectCommand
   | HoverCommand
   | ContentCommand
-  | CloseCommand;
+  | CloseCommand
+  | TabNewCommand
+  | TabListCommand
+  | TabSwitchCommand
+  | TabCloseCommand
+  | WindowNewCommand;
 
 // Response types
 export interface SuccessResponse<T = unknown> {
@@ -150,6 +179,34 @@ export interface EvaluateData {
 
 export interface ContentData {
   html: string;
+}
+
+export interface TabInfo {
+  index: number;
+  url: string;
+  title: string;
+  active: boolean;
+}
+
+export interface TabListData {
+  tabs: TabInfo[];
+  active: number;
+}
+
+export interface TabNewData {
+  index: number;
+  total: number;
+}
+
+export interface TabSwitchData {
+  index: number;
+  url: string;
+  title: string;
+}
+
+export interface TabCloseData {
+  closed: number;
+  remaining: number;
 }
 
 // Browser state

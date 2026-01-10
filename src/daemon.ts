@@ -6,48 +6,67 @@ import { BrowserManager } from './browser.js';
 import { parseCommand, serializeResponse, errorResponse } from './protocol.js';
 import { executeCommand } from './actions.js';
 
-const SOCKET_PATH = path.join(os.tmpdir(), 'veb.sock');
-const PID_FILE = path.join(os.tmpdir(), 'veb.pid');
+// Session support - each session gets its own socket/pid
+let currentSession = process.env.VEB_SESSION || 'default';
 
 /**
- * Get the socket path
+ * Set the current session
  */
-export function getSocketPath(): string {
-  return SOCKET_PATH;
+export function setSession(session: string): void {
+  currentSession = session;
 }
 
 /**
- * Get the PID file path
+ * Get the current session
  */
-export function getPidFile(): string {
-  return PID_FILE;
+export function getSession(): string {
+  return currentSession;
 }
 
 /**
- * Check if daemon is running
+ * Get the socket path for the current session
  */
-export function isDaemonRunning(): boolean {
-  if (!fs.existsSync(PID_FILE)) return false;
+export function getSocketPath(session?: string): string {
+  const sess = session ?? currentSession;
+  return path.join(os.tmpdir(), `veb-${sess}.sock`);
+}
+
+/**
+ * Get the PID file path for the current session
+ */
+export function getPidFile(session?: string): string {
+  const sess = session ?? currentSession;
+  return path.join(os.tmpdir(), `veb-${sess}.pid`);
+}
+
+/**
+ * Check if daemon is running for the current session
+ */
+export function isDaemonRunning(session?: string): boolean {
+  const pidFile = getPidFile(session);
+  if (!fs.existsSync(pidFile)) return false;
   
   try {
-    const pid = parseInt(fs.readFileSync(PID_FILE, 'utf8').trim(), 10);
+    const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
     // Check if process exists
     process.kill(pid, 0);
     return true;
   } catch {
     // Process doesn't exist, clean up stale files
-    cleanupSocket();
+    cleanupSocket(session);
     return false;
   }
 }
 
 /**
- * Clean up socket and PID file
+ * Clean up socket and PID file for the current session
  */
-export function cleanupSocket(): void {
+export function cleanupSocket(session?: string): void {
+  const socketPath = getSocketPath(session);
+  const pidFile = getPidFile(session);
   try {
-    if (fs.existsSync(SOCKET_PATH)) fs.unlinkSync(SOCKET_PATH);
-    if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE);
+    if (fs.existsSync(socketPath)) fs.unlinkSync(socketPath);
+    if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile);
   } catch {
     // Ignore cleanup errors
   }
@@ -121,10 +140,13 @@ export async function startDaemon(): Promise<void> {
     });
   });
   
-  // Write PID file before listening
-  fs.writeFileSync(PID_FILE, process.pid.toString());
+  const socketPath = getSocketPath();
+  const pidFile = getPidFile();
   
-  server.listen(SOCKET_PATH, () => {
+  // Write PID file before listening
+  fs.writeFileSync(pidFile, process.pid.toString());
+  
+  server.listen(socketPath, () => {
     // Daemon is ready
   });
   
